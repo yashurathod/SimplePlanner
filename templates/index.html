@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cork Visit</title>
+  <style>
+    body {
+      font-family: Arial;
+      background: #f5f8fa;
+      padding: 40px;
+      color: #333;
+    }
+    h1 {
+      color: #007bff;
+    }
+    form {
+      margin-bottom: 20px;
+    }
+    input {
+      padding: 10px;
+      margin: 5px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      padding: 10px 20px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      padding: 10px;
+      border: 1px solid #ccc;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>🚌 Cork Visit Planner</h1>
+  <form method="POST" action="/get_routes">
+  <input type="text" name="destination" placeholder="Enter destination (e.g., Cobh)" required>
+  <input type="number" name="budget" placeholder="Budget (€)" required>
+  <input type="hidden" id="lat" name="lat">
+  <input type="hidden" id="lon" name="lon">
+  <button type="submit">Find Routes</button>
+</form>
+
+  {% if message %}
+    <p>{{ message }}</p>
+  {% endif %}
+
+  {% if results %}
+  <h3>Routes available within €{{ budget }} to {{ destination }}:</h3>
+  <table>
+    <tr>
+      <th>Route</th>
+      <th>Destination</th>
+      <th>Start Time</th>
+      <th>Estimated Cost</th>
+    </tr>
+    {% for r in results %}
+      <tr>
+        <td>{{ r.route }}</td>
+        <td>{{ r.destination }}</td>
+        <td>{{ r.start_time }}</td>
+        <td>{{ r.estimated_cost }}</td>
+      </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</body>
+</html>
+<script>
+  // Get current location automatically
+  window.onload = function() {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(success, error);
+    } else {
+      alert("Geolocation not supported on this browser");
+    }
+  }
+
+  function success(position) {
+    document.getElementById("lat").value = position.coords.latitude;
+    document.getElementById("lon").value = position.coords.longitude;
+  }
+
+  function error(err) {
+    console.warn(`ERROR(${err.code}): ${err.message}`);
+  }
+</script>
+
