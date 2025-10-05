@@ -6,8 +6,8 @@ import os
 
 app = Flask(__name__)
 
-# Your TFI API key (prefer environment variable TFI_API_KEY)
-API_KEY = os.getenv("TFI_API_KEY", "d75c5bbe8ab641149e15c071e520af77")
+# Your TFI API key (set environment variable TFI_API_KEY)
+API_KEY = os.getenv("TFI_API_KEY")
 BASE_URL = "https://api.nationaltransport.ie/gtfsr/v2/TripUpdates?format=json"
 
 # 📄 Lazy-load GTFS static files for robustness
@@ -210,9 +210,11 @@ def get_routes():
         # 4) Fetch realtime data (optional). If unavailable, still return static segments.
         results = []
         try:
-            headers = {'x-api-key': API_KEY}
-            response = requests.get(BASE_URL, headers=headers, timeout=8)
-            data = response.json()
+            if API_KEY:
+                response = requests.get(BASE_URL, headers={'x-api-key': API_KEY}, timeout=8)
+                data = response.json()
+            else:
+                data = {"entity": []}
         except Exception:
             data = {"entity": []}
 
