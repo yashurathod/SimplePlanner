@@ -57,20 +57,24 @@
   {% endif %}
 
   {% if results %}
-  <h3>Routes available within €{{ budget }} to {{ destination }}:</h3>
+  {% if origin_stop and destination_stop %}
+  <h3>Buses from {{ origin_stop }} to {{ destination_stop }}:</h3>
+  {% else %}
+  <h3>Available buses:</h3>
+  {% endif %}
   <table>
     <tr>
       <th>Route</th>
-      <th>Destination</th>
-      <th>Start Time</th>
-      <th>Estimated Cost</th>
+      <th>Headsign</th>
+      <th>Next departure</th>
+      <th>Stops on the way</th>
     </tr>
     {% for r in results %}
       <tr>
         <td>{{ r.route }}</td>
-        <td>{{ r.destination }}</td>
-        <td>{{ r.start_time }}</td>
-        <td>{{ r.estimated_cost }}</td>
+        <td>{{ r.headsign }}</td>
+        <td>{{ r.next_departure }}</td>
+        <td>{{ r.stops_count if r.stops_count is not none else '-' }}</td>
       </tr>
     {% endfor %}
   </table>
