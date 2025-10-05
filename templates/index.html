@@ -45,10 +45,14 @@
 <body>
   <h1>🚌 Cork Visit Planner</h1>
   <form method="POST" action="/get_routes">
-  <input type="text" name="destination" placeholder="Enter destination (e.g., Cobh)" required>
+  <input type="text" name="destination" placeholder="Enter destination bus stop (e.g., Wilton Rd)" required>
   <input type="number" name="budget" placeholder="Budget (€)" required>
   <input type="hidden" id="lat" name="lat">
   <input type="hidden" id="lon" name="lon">
+  <label for="origin_stop_id">Choose your nearest stop:</label>
+  <select id="origin_stop_id" name="origin_stop_id">
+    <option value="">Auto-detect nearest</option>
+  </select>
   <button type="submit">Find Routes</button>
 </form>
 
@@ -82,22 +86,35 @@
 </body>
 </html>
 <script>
-  // Get current location automatically
+  // Get current location, then populate nearest stops dropdown
   window.onload = function() {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(success, error);
-    } else {
-      alert("Geolocation not supported on this browser");
+    if (!navigator.geolocation) {
+      console.warn('Geolocation not supported');
+      return;
     }
-  }
-
-  function success(position) {
-    document.getElementById("lat").value = position.coords.latitude;
-    document.getElementById("lon").value = position.coords.longitude;
-  }
-
-  function error(err) {
-    console.warn(`ERROR(${err.code}): ${err.message}`);
-  }
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      document.getElementById('lat').value = lat;
+      document.getElementById('lon').value = lon;
+      try {
+        const resp = await fetch(`/nearest_stops?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&limit=8`);
+        const data = await resp.json();
+        const sel = document.getElementById('origin_stop_id');
+        if (data && Array.isArray(data.stops)) {
+          data.stops.forEach((s) => {
+            const opt = document.createElement('option');
+            opt.value = s.stop_id;
+            opt.textContent = `${s.stop_name} (${s.distance_km} km)`;
+            sel.appendChild(opt);
+          });
+        }
+      } catch (e) {
+        console.warn('Failed to load nearest stops', e);
+      }
+    }, (err) => {
+      console.warn(`Geolocation error ${err.code}: ${err.message}`);
+    });
+  };
 </script>
 

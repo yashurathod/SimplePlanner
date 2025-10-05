@@ -6,8 +6,8 @@ import os
 
 app = Flask(__name__)
 
-# Your TFI API key (prefer environment variable TFI_API_KEY)
-API_KEY = os.getenv("TFI_API_KEY", "d75c5bbe8ab641149e15c071e520af77")
+# Your TFI API key (set environment variable TFI_API_KEY)
+API_KEY = os.getenv("TFI_API_KEY")
 BASE_URL = "https://api.nationaltransport.ie/gtfsr/v2/TripUpdates?format=json"
 
 # 📄 Lazy-load GTFS static files for robustness
@@ -62,6 +62,45 @@ def haversine(lat1, lon1, lat2, lon2):
 def home():
     return render_template('index.html')
 
+@app.route('/nearest_stops', methods=['GET'])
+def nearest_stops():
+    try:
+        lat = request.args.get('lat')
+        lon = request.args.get('lon')
+        limit = int(request.args.get('limit', 6))
+
+        if not lat or not lon:
+            return jsonify({"error": "lat and lon query params are required"}), 400
+
+        user_lat = float(lat)
+        user_lon = float(lon)
+
+        try:
+            _, _, stops = load_static_data()
+        except FileNotFoundError as fe:
+            return jsonify({"error": str(fe)}), 500
+
+        df = stops.assign(
+            distance=stops.apply(
+                lambda row: haversine(user_lat, user_lon, row['stop_lat'], row['stop_lon']),
+                axis=1,
+            )
+        ).sort_values('distance').head(limit)
+
+        items = [
+            {
+                'stop_id': str(r['stop_id']),
+                'stop_name': r['stop_name'],
+                'stop_lat': float(r['stop_lat']),
+                'stop_lon': float(r['stop_lon']),
+                'distance_km': round(float(r['distance']), 3),
+            }
+            for _, r in df.iterrows()
+        ]
+        return jsonify({"stops": items})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/get_routes', methods=['POST'])
 def get_routes():
     try:
@@ -69,15 +108,11 @@ def get_routes():
         # Budget may not be relevant for routing; keep parsing for backward compatibility
         budget_raw = request.form.get('budget')
         budget = float(budget_raw) if budget_raw is not None and budget_raw != '' else 0.0
-        user_lat = float(request.form.get('lat', 0))
-        user_lon = float(request.form.get('lon', 0))
-
-        if not user_lat or not user_lon:
-            return render_template(
-                'index.html',
-                results=[],
-                message="Couldn't get your location. Please allow location access and try again.",
-            )
+        user_lat_raw = request.form.get('lat')
+        user_lon_raw = request.form.get('lon')
+        user_lat = float(user_lat_raw) if user_lat_raw not in (None, '') else None
+        user_lon = float(user_lon_raw) if user_lon_raw not in (None, '') else None
+        provided_origin_stop_id = request.form.get('origin_stop_id')
 
         # Ensure static data is available
         try:
@@ -85,16 +120,31 @@ def get_routes():
         except FileNotFoundError as fe:
             return render_template('index.html', results=[], message=str(fe))
 
-        # 1) Determine your single nearest stop (no radius filter)
-        stops_with_distance = stops.assign(
-            distance=stops.apply(
-                lambda row: haversine(user_lat, user_lon, row['stop_lat'], row['stop_lon']),
-                axis=1,
+        # 1) Determine origin stop: prefer selected, else nearest
+        origin_stop_id = None
+        origin_stop_name = None
+        if provided_origin_stop_id:
+            match = stops[stops['stop_id'].astype(str) == str(provided_origin_stop_id)]
+            if match.empty:
+                return render_template('index.html', results=[], message="Selected origin stop not found.")
+            origin_stop_id = str(match.iloc[0]['stop_id'])
+            origin_stop_name = match.iloc[0]['stop_name']
+        else:
+            if user_lat is None or user_lon is None:
+                return render_template(
+                    'index.html',
+                    results=[],
+                    message="Couldn't get your location. Please allow location access and try again.",
+                )
+            stops_with_distance = stops.assign(
+                distance=stops.apply(
+                    lambda row: haversine(user_lat, user_lon, row['stop_lat'], row['stop_lon']),
+                    axis=1,
+                )
             )
-        )
-        nearest_stop_row = stops_with_distance.sort_values('distance').iloc[0]
-        origin_stop_id = str(nearest_stop_row['stop_id'])
-        origin_stop_name = nearest_stop_row['stop_name']
+            nearest_stop_row = stops_with_distance.sort_values('distance').iloc[0]
+            origin_stop_id = str(nearest_stop_row['stop_id'])
+            origin_stop_name = nearest_stop_row['stop_name']
 
         # 2) Resolve destination stop by exact match first, then contains
         dest_exact = stops[stops['stop_name'].str.lower() == destination.strip().lower()]
@@ -160,9 +210,11 @@ def get_routes():
         # 4) Fetch realtime data (optional). If unavailable, still return static segments.
         results = []
         try:
-            headers = {'x-api-key': API_KEY}
-            response = requests.get(BASE_URL, headers=headers, timeout=8)
-            data = response.json()
+            if API_KEY:
+                response = requests.get(BASE_URL, headers={'x-api-key': API_KEY}, timeout=8)
+                data = response.json()
+            else:
+                data = {"entity": []}
         except Exception:
             data = {"entity": []}
 
